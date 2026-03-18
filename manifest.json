@@ -1,0 +1,8 @@
+{
+"name":"Calendario Turno 3",
+"short_name":"Turno3",
+"start_url":"/",
+"display":"standalone",
+"background_color":"#ffffff",
+"theme_color":"#ff9800"
+}

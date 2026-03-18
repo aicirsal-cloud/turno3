@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Calendario Turno 3</title>
+
+<link rel="stylesheet" href="style.css">
+<link rel="manifest" href="manifest.json">
+
+</head>
+
+<body>
+
+<h1>Calendario Turno 3</h1>
+
+<div class="controls">
+
+<button id="prevMonth">◀</button>
+<h2 id="monthTitle"></h2>
+<button id="nextMonth">▶</button>
+
+</div>
+
+<div class="userPanel">
+
+<select id="userSelect"></select>
+
+<input id="newUser" placeholder="Añadir nombre">
+
+<button id="addUser">Añadir</button>
+
+<button id="adminBtn">Modo Admin</button>
+
+</div>
+
+<div id="calendar"></div>
+
+<button id="nextYear">Ver año próximo</button>
+
+<h3>Notas del mes</h3>
+
+<div class="notes">
+
+<input id="noteInput">
+
+<button id="addNote">Guardar</button>
+
+<div id="notesList"></div>
+
+</div>
+
+<script src="app.js"></script>
+
+</body>
+</html>
