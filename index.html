@@ -1,58 +1,246 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Calendario Turno 3</title>
 
-<link rel="stylesheet" href="style.css">
-<link rel="manifest" href="manifest.json">
+<style>
+body {font-family:Arial,sans-serif;text-align:center;margin:10px;background:#f2f2f2;}
+h1 {font-size:22px;}
+#calendar {display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-top:10px;}
+.day {background:white;border-radius:8px;padding:5px;min-height:90px;font-size:12px;cursor:pointer;}
+.manana{background:#b3e5fc;}
+.tarde{background:#ffe082;}
+.noche{background:#ce93d8;}
+.libre{background:white;}
+.tooMany{color:red;font-weight:bold;}
+button{padding:8px;margin:4px;font-size:14px;}
+select,input{padding:8px;margin:4px;}
+.notes{margin-top:15px;}
+.weekdays{display:grid;grid-template-columns:repeat(7,1fr);font-weight:bold;margin-bottom:5px;}
+</style>
+
+<!-- Firebase -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getFirestore, doc, setDoc, getDoc, updateDoc, getDocs, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+// 🔹 CONFIGURACIÓN DE FIREBASE
+const firebaseConfig = {
+  // <- Pega aquí tu firebaseConfig
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+</script>
 
 </head>
-
 <body>
 
 <h1>Calendario Turno 3</h1>
 
 <div class="controls">
+<button onclick="prevMonth()">◀</button>
+<span id="monthTitle"></span>
+<button onclick="nextMonth()">▶</button>
+</div>
 
-<button id="prevMonth">◀</button>
-<h2 id="monthTitle"></h2>
-<button id="nextMonth">▶</button>
-
+<div class="weekdays">
+<div>L</div><div>M</div><div>X</div><div>J</div><div>V</div><div>S</div><div>D</div>
 </div>
 
 <div class="userPanel">
-
 <select id="userSelect"></select>
-
 <input id="newUser" placeholder="Añadir nombre">
-
-<button id="addUser">Añadir</button>
-
-<button id="adminBtn">Modo Admin</button>
-
+<button onclick="addUser()">Añadir</button>
+<button onclick="adminLogin()">Admin</button>
 </div>
 
 <div id="calendar"></div>
 
-<button id="nextYear">Ver año próximo</button>
+<br>
+<button onclick="nextYear()">Ver año próximo</button>
 
 <h3>Notas del mes</h3>
-
 <div class="notes">
-
-<input id="noteInput">
-
-<button id="addNote">Guardar</button>
-
+<input id="noteText" placeholder="Escribe nota">
+<button onclick="addNote()">Guardar</button>
 <div id="notesList"></div>
-
 </div>
 
-<script src="app.js"></script>
+<script type="module">
 
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getFirestore, doc, setDoc, getDoc, updateDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+const rotation=[
+"manana","manana",
+"tarde","tarde",
+"noche","noche",
+"libre","libre","libre","libre","libre","libre"
+];
+
+const startRotation = new Date("2026-03-22T00:00:00");
+
+let currentDate = new Date();
+let admin = false;
+const ADMIN_PASS = "turno3admin";
+
+// 🔹 Funciones de turnos
+function getShift(date){
+  let diff = Math.floor((date - startRotation) / 86400000);
+  let index = ((diff % rotation.length) + rotation.length) % rotation.length;
+  return rotation[index];
+}
+
+function isWeekend(date){ return date.getDay()===0 || date.getDay()===6; }
+function isWeekday(date){ return !isWeekend(date); }
+
+// Festivos ejemplo (puedes añadir más)
+const holidays = [
+  "2026-01-01","2026-12-25","2026-12-06"
+];
+
+function isHoliday(date){
+  const d = date.toISOString().split("T")[0];
+  return holidays.includes(d);
+}
+
+function capacity(date,shift){
+  if(shift==="noche" || isWeekend(date) || isHoliday(date)) return 3;
+  if(shift==="manana" || shift==="tarde") return 4;
+  return 4; // por defecto
+}
+
+// 🔹 Calendar
+async function loadCalendar(){
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  document.getElementById("monthTitle").innerText=
+    new Date(year,month).toLocaleString('es',{month:'long',year:'numeric'});
+  const lastDay = new Date(year,month+1,0).getDate();
+  const calendar = document.getElementById("calendar");
+  calendar.innerHTML="";
+
+  for(let d=1; d<=lastDay; d++){
+    const date = new Date(year,month,d);
+    const shift = getShift(date);
+    const div = document.createElement("div");
+    div.className="day "+shift;
+    div.innerHTML="<b>"+d+"</b>";
+    div.onclick = ()=> toggleDay(date,div);
+    // Cargar usuarios desde Firestore
+    const dayRef = doc(db,"days",date.toISOString().split("T")[0]);
+    const snap = await getDoc(dayRef);
+    const users = snap.exists()?snap.data().users:[];
+    renderDay(div,users,date);
+    calendar.appendChild(div);
+  }
+}
+
+// 🔹 Toggle usuario en un día
+async function toggleDay(date,div){
+  const user = document.getElementById("userSelect").value;
+  if(!user) return;
+  const id = date.toISOString().split("T")[0];
+  const dayRef = doc(db,"days",id);
+  const snap = await getDoc(dayRef);
+  let data = snap.exists()?snap.data():{users:[]};
+  let index = data.users.indexOf(user);
+  if(index>-1){ // quitar
+    data.users.splice(index,1);
+  } else { // añadir
+    data.users.push(user);
+  }
+  await setDoc(dayRef,data);
+  renderDay(div,data.users,date);
+}
+
+function renderDay(div,users,date){
+  const shift = getShift(date);
+  const max = capacity(date,shift);
+  const left = max-users.length;
+  let html="<b>"+date.getDate()+"</b><br>";
+  users.forEach(u=>{
+    html+=u+" ("+left+")<br>";
+  });
+  if(users.length>max){
+    html+='<div class="tooMany">¡DEMASIADOS APUNTADOS!</div>';
+  }
+  div.innerHTML = html;
+}
+
+// 🔹 Botones de navegación
+function prevMonth(){ currentDate.setMonth(currentDate.getMonth()-1); loadCalendar(); }
+function nextMonth(){ currentDate.setMonth(currentDate.getMonth()+1); loadCalendar(); }
+function nextYear(){ currentDate.setFullYear(currentDate.getFullYear()+1); loadCalendar(); }
+
+// 🔹 Usuarios
+function addUser(){
+  const name = document.getElementById("newUser").value;
+  if(!name) return;
+  const select = document.getElementById("userSelect");
+  let exists=false;
+  for(let i=0;i<select.options.length;i++){if(select.options[i].text===name){exists=true;break;}}
+  if(!exists){
+    const option=document.createElement("option");
+    option.text=name;
+    select.add(option);
+  }
+  document.getElementById("newUser").value="";
+}
+
+// 🔹 Admin
+function adminLogin(){
+  const pass = prompt("Contraseña admin");
+  if(pass===ADMIN_PASS){
+    admin=true;
+    alert("Modo administrador activado");
+  }
+}
+
+// 🔹 Notas
+async function addNote(){
+  const text = document.getElementById("noteText").value;
+  const user = document.getElementById("userSelect").value;
+  if(!text || !user) return;
+  const monthKey = currentDate.toISOString().slice(0,7);
+  const noteRef = doc(db,"notes",monthKey);
+  const snap = await getDoc(noteRef);
+  let data = snap.exists()?snap.data():{notes:[]};
+  data.notes.push(user+": "+text);
+  await setDoc(noteRef,data);
+  renderNotes();
+  document.getElementById("noteText").value="";
+}
+
+async function renderNotes(){
+  const monthKey = currentDate.toISOString().slice(0,7);
+  const noteRef = doc(db,"notes",monthKey);
+  const snap = await getDoc(noteRef);
+  const notesList = document.getElementById("notesList");
+  notesList.innerHTML="";
+  if(snap.exists()){
+    snap.data().notes.forEach(n=>{
+      const div = document.createElement("div");
+      div.innerText = n;
+      notesList.appendChild(div);
+    });
+  }
+}
+
+// 🔹 Inicializar
+loadCalendar();
+renderNotes();
+
+window.prevMonth = prevMonth;
+window.nextMonth = nextMonth;
+window.nextYear = nextYear;
+window.addUser = addUser;
+window.adminLogin = adminLogin;
+window.addNote = addNote;
+
+</script>
 </body>
 </html>
